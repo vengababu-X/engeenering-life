@@ -1,330 +1,243 @@
+// app.js - Improved version for Engineering Life (by Vengababu 🚀)
 
-import { supabase } from './supabase.js';
+// ✅ Supabase Client
+const supabaseUrl = 'https://ylwqbywihmtnvnmhljod.supabase.co';
+const supabaseKey = '<YOUR_SUPABASE_KEY>'; // keep this safe
+const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-// --- DOM ELEMENTS ---
-// Pages
-const pages = document.querySelectorAll('.page');
-const loginPage = document.getElementById('login-page');
-const studentInfoPage = document.getElementById('student-info-page');
-const welcomePage = document.getElementById('welcome-page');
-const homePage = document.getElementById('home-page');
-const myBookPage = document.getElementById('my-book-page');
-const courseDetailPage = document.getElementById('course-detail-page');
-const unitViewPage = document.getElementById('unit-view-page');
-const profilePage = document.getElementById('profile-page');
+// ✅ Page routing
+function showPage(pageId) {
+    document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+    const page = document.getElementById(pageId);
+    if (page) page.style.display = 'block';
+}
 
-// Header & Footer
-const header = document.getElementById('app-header');
-const footer = document.getElementById('app-footer');
-
-// Forms & Buttons
-const loginForm = document.getElementById('login-form');
-const emailInput = document.getElementById('email-input');
-const studentInfoForm = document.getElementById('student-info-form');
-const logoutBtn = document.getElementById('logout-btn');
-const letsGoBtn = document.getElementById('lets-go-btn');
-const backToMyBookBtn = document.getElementById('back-to-my-book');
-const backToUnitsBtn = document.getElementById('back-to-units');
-
-// Content Containers
-const loginMessage = document.getElementById('login-message');
-const coursesGrid = document.getElementById('courses-grid');
-const enrolledCoursesGrid = document.getElementById('enrolled-courses-grid');
-const unitsList = document.getElementById('units-list');
-const profileName = document.getElementById('profile-name');
-const profileEmail = document.getElementById('profile-email');
-const profileMobile = document.getElementById('profile-mobile');
-const profileBranch = document.getElementById('profile-branch');
-
-// --- APP STATE ---
-let currentUser = null;
-let currentCourseId = null;
-
-// --- PAGE ROUTING ---
-const showPage = (pageId) => {
-    pages.forEach(page => page.classList.add('hidden'));
-    document.getElementById(pageId).classList.remove('hidden');
-
-    const mainPages = ['home-page', 'my-book-page', 'profile-page', 'course-detail-page', 'unit-view-page'];
-    if (mainPages.includes(pageId)) {
-        header.classList.remove('hidden');
-        footer.classList.remove('hidden');
-    } else {
-        header.classList.add('hidden');
-        footer.classList.add('hidden');
+// ✅ Global loading state
+function setLoading(isLoading, msg = "Loading...") {
+    let loader = document.getElementById("global-loader");
+    if (!loader) {
+        loader = document.createElement("div");
+        loader.id = "global-loader";
+        loader.style.position = "fixed";
+        loader.style.top = "0";
+        loader.style.left = "0";
+        loader.style.width = "100%";
+        loader.style.height = "100%";
+        loader.style.background = "rgba(0,0,0,0.5)";
+        loader.style.color = "#fff";
+        loader.style.display = "flex";
+        loader.style.alignItems = "center";
+        loader.style.justifyContent = "center";
+        loader.style.zIndex = "1000";
+        loader.style.fontSize = "1.2rem";
+        document.body.appendChild(loader);
     }
-};
+    loader.innerText = msg;
+    loader.style.display = isLoading ? "flex" : "none";
+}
 
-// --- AUTHENTICATION ---
-const handleLogin = async (e) => {
-    e.preventDefault();
-    const email = emailInput.value.trim();
-    loginMessage.textContent = '';
-
-    try {
-        // MODIFICATION: Added emailRedirectTo option for correct redirection
-        const { error } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-                emailRedirectTo: 'https://jeyaram1023.github.io/Engeenering-life/',
-            },
-        });
-
-        if (error) throw error;
-
-        loginMessage.textContent = '✅ Success! Check your email for the magic link.';
-        loginMessage.style.color = 'var(--success-color)';
-        loginForm.reset();
-    } catch (error) {
-        console.error('Login Error:', error.message);
-        loginMessage.textContent = `❌ Error: ${error.message}`;
-        loginMessage.style.color = 'var(--danger-color)';
+// ✅ Handle login
+async function login() {
+    const email = document.getElementById("email").value.trim();
+    if (!email) {
+        alert("Please enter your email.");
+        return;
     }
-};
 
-const handleLogout = async () => {
-    await supabase.auth.signOut();
-    currentUser = null;
-    showPage('login-page');
-};
+    setLoading(true, "Sending login link...");
 
-// --- DATA FETCHING & RENDERING ---
-const fetchStudentProfile = async (userId) => {
-    const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows found
-        console.error('Fetch Profile Error:', error);
-        return null;
-    }
-    return data;
-};
-
-const loadHomePage = async () => {
-    const { data: courses, error: coursesError } = await supabase.from('courses').select('*');
-    if (coursesError) return console.error('Error fetching courses:', coursesError);
-
-    const { data: enrollments, error: enrollmentsError } = await supabase
-        .from('enrollments')
-        .select('course_id')
-        .eq('student_id', currentUser.id);
-    if (enrollmentsError) return console.error('Error fetching enrollments:', enrollmentsError);
-
-    const enrolledCourseIds = new Set(enrollments.map(e => e.course_id));
-
-    coursesGrid.innerHTML = '';
-    courses.forEach(course => {
-        const isEnrolled = enrolledCourseIds.has(course.id);
-        const card = document.createElement('div');
-        card.className = 'course-card';
-        card.innerHTML = `
-            <img src="${course.cover_image_url}" alt="${course.title}">
-            <div class="course-card-content">
-                <h3>${course.title}</h3>
-                <p>${course.description}</p>
-                <button data-course-id="${course.id}" class="${isEnrolled ? 'view-btn' : 'enroll-btn'}">
-                    ${isEnrolled ? 'View Course' : 'Enroll Now'}
-                </button>
-            </div>
-        `;
-        coursesGrid.appendChild(card);
+    const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+            emailRedirectTo: 'https://vengababu.github.io/Engeenering-life/'
+        }
     });
-    showPage('home-page');
-};
 
-const loadMyBookPage = async () => {
+    setLoading(false);
+
+    if (error) {
+        alert("Error: " + error.message);
+    } else {
+        alert("✅ Check your email for the login link.");
+    }
+}
+
+// ✅ Save Student Info
+async function saveStudentInfo() {
+    const name = document.getElementById("name").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+    const branch = document.getElementById("branch").value.trim();
+
+    if (!name || !phone || !branch) {
+        alert("⚠️ Please fill all fields.");
+        return;
+    }
+
+    setLoading(true, "Saving your info...");
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+        alert("No user session found.");
+        setLoading(false);
+        return;
+    }
+
+    const { error } = await supabase
+        .from('students')
+        .upsert([{ id: user.id, name, phone, branch }]);
+
+    setLoading(false);
+
+    if (error) {
+        alert("Error: " + error.message);
+    } else {
+        showPage("welcome-page");
+        document.getElementById("student-info-display").innerText =
+            `Welcome, ${name} (${branch})`;
+    }
+}
+
+// ✅ Load Courses
+async function loadCourses() {
+    setLoading(true, "Loading courses...");
+    const { data, error } = await supabase.from("courses").select("*");
+    setLoading(false);
+
+    const list = document.getElementById("course-list");
+    list.innerHTML = "";
+
+    if (error) {
+        list.innerHTML = `<p style="color:red;">Error loading courses.</p>`;
+        return;
+    }
+
+    data.forEach(course => {
+        const div = document.createElement("div");
+        div.className = "course-card";
+        div.innerHTML = `
+            <h3>${course.title}</h3>
+            <p>${course.description}</p>
+            <button onclick="viewCourse(${course.id})">View</button>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// ✅ Load My Book (Enrolled Courses)
+async function loadMyBook() {
+    setLoading(true, "Loading your courses...");
+    const { data: { user } } = await supabase.auth.getUser();
     const { data, error } = await supabase
-        .from('enrollments')
-        .select('courses(*)')
-        .eq('student_id', currentUser.id);
+        .from("enrollments")
+        .select("courses(*)")
+        .eq("student_id", user.id);
+    setLoading(false);
 
-    if (error) return console.error('Error fetching enrolled courses:', error);
+    const list = document.getElementById("mybook-list");
+    list.innerHTML = "";
 
-    enrolledCoursesGrid.innerHTML = '';
-    if (data.length === 0) {
-        enrolledCoursesGrid.innerHTML = '<p>You have not enrolled in any courses yet.</p>';
+    if (error) {
+        list.innerHTML = `<p style="color:red;">Error loading enrolled courses.</p>`;
         return;
     }
 
     data.forEach(enrollment => {
         const course = enrollment.courses;
-        const card = document.createElement('div');
-        card.className = 'course-card';
-        card.innerHTML = `
-            <img src="${course.cover_image_url}" alt="${course.title}">
-            <div class="course-card-content">
-                <h3>${course.title}</h3>
-                <p>${course.description}</p>
-                <button data-course-id="${course.id}" class="view-btn">View Course</button>
-            </div>
+        const div = document.createElement("div");
+        div.className = "course-card";
+        div.innerHTML = `
+            <h3>${course.title}</h3>
+            <button onclick="viewCourse(${course.id})">Go to Course</button>
         `;
-        enrolledCoursesGrid.appendChild(card);
+        list.appendChild(div);
     });
-    showPage('my-book-page');
-};
+}
 
-const loadCourseDetailPage = async (courseId) => {
-    currentCourseId = courseId;
-    const { data: course, error: courseError } = await supabase.from('courses').select('title').eq('id', courseId).single();
-    const { data: units, error: unitsError } = await supabase.from('units').select('*').eq('course_id', courseId).order('unit_order');
+// ✅ View Course Detail
+async function viewCourse(courseId) {
+    setLoading(true, "Loading course...");
+    const { data, error } = await supabase
+        .from("units")
+        .select("*")
+        .eq("course_id", courseId);
+    setLoading(false);
 
-    if (courseError || unitsError) {
-        return console.error('Error fetching course details:', courseError || unitsError);
-    }
-
-    document.getElementById('course-detail-title').textContent = course.title;
-    unitsList.innerHTML = '';
-    units.forEach(unit => {
-        const unitItem = document.createElement('div');
-        unitItem.className = 'unit-item';
-        // TODO: Add logic to check if unit is completed
-        unitItem.innerHTML = `
-            <span>${unit.title}</span>
-            <i class="fas fa-play-circle"></i>
-        `;
-        unitItem.addEventListener('click', () => loadUnitViewPage(unit));
-        unitsList.appendChild(unitItem);
-    });
-    showPage('course-detail-page');
-};
-
-const loadUnitViewPage = (unit) => {
-    document.getElementById('unit-title').textContent = unit.title;
-    const videoContainer = document.getElementById('video-container');
-    const audioContainer = document.getElementById('audio-container');
-    const textContainer = document.getElementById('text-container');
-
-    videoContainer.innerHTML = unit.video_url ? `<video src="${unit.video_url}" controls></video>` : '';
-    audioContainer.innerHTML = unit.audio_url ? `<audio src="${unit.audio_url}" controls></audio>` : '';
-    textContainer.innerHTML = unit.text_content ? `<p>${unit.text_content}</p>` : '';
-    showPage('unit-view-page');
-};
-
-const loadProfilePage = async () => {
-    const profile = await fetchStudentProfile(currentUser.id);
-    if (profile) {
-        profileName.textContent = profile.name;
-        profileEmail.textContent = profile.email;
-        profileMobile.textContent = profile.mobile;
-        profileBranch.textContent = profile.branch;
-    }
-    showPage('profile-page');
-};
-
-// --- EVENT HANDLERS ---
-const handleStudentInfoSubmit = async (e) => {
-    e.preventDefault();
-    const name = document.getElementById('name-input').value;
-    const mobile = document.getElementById('mobile-input').value;
-    const branch = document.getElementById('branch-select').value;
-
-    const { error } = await supabase.from('students').upsert({
-        id: currentUser.id,
-        email: currentUser.email,
-        name,
-        mobile,
-        branch,
-        updated_at: new Date()
-    });
+    showPage("course-detail-page");
+    const container = document.getElementById("course-detail");
+    container.innerHTML = "";
 
     if (error) {
-        console.error('Error saving student info:', error);
-    } else {
-        document.getElementById('welcome-name').textContent = name;
-        document.getElementById('welcome-branch').textContent = branch;
-        showPage('welcome-page');
+        container.innerHTML = `<p style="color:red;">Error loading course.</p>`;
+        return;
     }
-};
 
-const handleEnroll = async (courseId) => {
-    const { error } = await supabase.from('enrollments').insert({
-        student_id: currentUser.id,
-        course_id: courseId
+    data.forEach(unit => {
+        const div = document.createElement("div");
+        div.className = "unit-card";
+        div.innerHTML = `
+            <h4>${unit.title}</h4>
+            <p>${unit.content || ""}</p>
+            <button onclick="completeUnit(${unit.id})">Mark Complete</button>
+        `;
+        container.appendChild(div);
     });
+}
+
+// ✅ Complete Unit
+async function completeUnit(unitId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+        .from("unit_progress")
+        .upsert([{ unit_id: unitId, student_id: user.id, completed: true }]);
 
     if (error) {
-        alert('Error enrolling in course. You might already be enrolled.');
-        console.error(error);
+        alert("Error: " + error.message);
     } else {
-        alert('Successfully enrolled!');
-        loadHomePage(); // Refresh to show "View Course"
+        alert("🎉 Unit marked complete!");
     }
-};
+}
 
-const handleGridClick = (e) => {
-    const target = e.target;
-    if (target.matches('.enroll-btn')) {
-        handleEnroll(target.dataset.courseId);
-    }
-    if (target.matches('.view-btn')) {
-        loadCourseDetailPage(target.dataset.courseId);
-    }
-};
+// ✅ Load Profile
+async function loadProfile() {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data, error } = await supabase
+        .from("students")
+        .select("*")
+        .eq("id", user.id)
+        .single();
 
-// --- INITIALIZATION ---
-const checkUserSession = async () => {
+    const container = document.getElementById("profile-info");
+    container.innerHTML = "";
+
+    if (error) {
+        container.innerHTML = `<p style="color:red;">Error loading profile.</p>`;
+        return;
+    }
+
+    container.innerHTML = `
+        <p><strong>Name:</strong> ${data.name}</p>
+        <p><strong>Phone:</strong> ${data.phone}</p>
+        <p><strong>Branch:</strong> ${data.branch}</p>
+        <button onclick="logout()">Logout</button>
+    `;
+}
+
+// ✅ Logout
+async function logout() {
+    await supabase.auth.signOut();
+    showPage("login-page");
+}
+
+// ✅ Init
+window.onload = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-        currentUser = session.user;
-        const profile = await fetchStudentProfile(currentUser.id);
-        if (profile) {
-            loadHomePage();
-        } else {
-            showPage('student-info-page');
-        }
+        showPage("home-page");
+        loadCourses();
     } else {
-        showPage('login-page');
+        showPage("login-page");
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    // Auth listeners
-    loginForm.addEventListener('submit', handleLogin);
-    logoutBtn.addEventListener('click', handleLogout);
-
-    // Form submission
-    studentInfoForm.addEventListener('submit', handleStudentInfoSubmit);
-
-    // Navigation
-    document.querySelector('#app-footer nav').addEventListener('click', (e) => {
-        const navLink = e.target.closest('.nav-link');
-        if (!navLink) return;
-
-        e.preventDefault();
-        document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-        navLink.classList.add('active');
-
-        const pageId = navLink.dataset.page;
-        if (pageId === 'home-page') loadHomePage();
-        else if (pageId === 'my-book-page') loadMyBookPage();
-        else if (pageId === 'profile-page') loadProfilePage();
-        else showPage(pageId);
-    });
-
-    // Button Clicks
-    letsGoBtn.addEventListener('click', loadHomePage);
-    backToMyBookBtn.addEventListener('click', loadMyBookPage);
-    backToUnitsBtn.addEventListener('click', () => loadCourseDetailPage(currentCourseId));
-
-    // Dynamic grid clicks (enroll/view)
-    coursesGrid.addEventListener('click', handleGridClick);
-    enrolledCoursesGrid.addEventListener('click', handleGridClick);
-
-    // Initial check
-    checkUserSession();
-});
-
-// Handle auth state changes (e.g., after magic link click)
-supabase.auth.onAuthStateChange((event, session) => {
-    if (event === 'SIGNED_IN') {
-        currentUser = session.user;
-        checkUserSession();
-    }
-    if (event === 'SIGNED_OUT') {
-        currentUser = null;
-        showPage('login-page');
-    }
-});
